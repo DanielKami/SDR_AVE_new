@@ -1,0 +1,13 @@
+###########################################
+# Average - a plugin for sdrsharp
+###########################################
+
+
+to get the plugin running
+- copy SDRSharp.Average.dll, MonoGame.Framework.dll, SharpDX.dll, SharpDX.Direct3D11.dll, SharpDX.DXGI.dll, ft2.xnb
+ into the SDRSharp direcotry
+- edit Plugins.xml
+- goto <sharpPlugins> section and add one line as described below
+    <add key="IF average"    value="SDRSharp.Average.AveragePlugin,           SDRSharp.Average" />
+
+Start sdrsharp join the new plugn.
