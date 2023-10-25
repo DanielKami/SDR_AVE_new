@@ -20,7 +20,12 @@ namespace SDRSharp.Average
         public double rate;
         public bool background_recording;
         public bool background_corrected;
-        
+        //Recording multiple
+        public bool file_recording;
+        public int FileNumber;
+        public long delay, delayMAX;
+        public long recordingTime=0;
+
         protected int LocationX;
         /////////////////////////////////////////////////////////////////////////////////////
 
@@ -36,11 +41,16 @@ namespace SDRSharp.Average
         private GraphicsDeviceService service;
         private ServiceContainer services;
 
+
+        //AV window close event
+        public  delegate void MyEventHandler(int value);
+        public static event MyEventHandler SomethingHappened;
+
         public IFAverageWindow()
         {
 
             InitializeComponent();
-           
+            
             panelViewport.Width = (int)(this.ClientRectangle.Width);
             panelViewport.Height = (int)(this.ClientRectangle.Height);
 
@@ -162,7 +172,10 @@ namespace SDRSharp.Average
 
         private void PassiveRadarWindow_FormClosing(object sender, FormClosingEventArgs e)
         {
+            //MessageBox.Show("gello");
+            SomethingHappened(0);
             service.ResetingDevice();
+            
         }
 
         private void PassiveRadarWindow_FormClosed(object sender, FormClosedEventArgs e)

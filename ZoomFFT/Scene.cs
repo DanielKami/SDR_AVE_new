@@ -165,13 +165,13 @@ namespace SDRSharp.Average
         private float ScaleX_delta;
         private float PixelsXToStart;
         private float stepX;
-     
+
         private void ScaleXPrepare()
         {
 
             Width_LeftMargin_RightMargin = panelViewport.Width - LeftMargin - RightMargin;
 
-           //Find how menny MHz is one pixel
+            //Find how menny MHz is one pixel
             MHz_perPixel = (float)(Width_LeftMargin_RightMargin / (rate / 1000000));
 
             //Round frequency to nearest digit after coma
@@ -182,7 +182,7 @@ namespace SDRSharp.Average
             PixelsXToStart = (panelViewport.Width - panelViewport.Width / 2) - ScaleX_delta * MHz_perPixel;
             stepX = (float)Math.Round(100.0 / MHz_perPixel, 1);
 
-           
+
 
         }
 
@@ -219,7 +219,7 @@ namespace SDRSharp.Average
             if (LocationX > LeftMargin && LocationX < Width - RightMargin)
                 Line(new Vector2(LocationX - 1, TopMargin), new Vector2(LocationX - 1, Height_BottomMargin), Color.Yellow);
 
-            drawString = "" + ((frequency / 1000000 - rate / 2000000) + (LocationX - LeftMargin) / MHz_perPixel).ToString("0.0000000") + " MHz    " + "Cumulations: " + cumulation + " of: " + cumulation_max;
+            drawString = "" + ((frequency / 1000000 - rate / 2000000) + (LocationX - LeftMargin) / MHz_perPixel).ToString("0.0000000") + " MHz    " + "Cumulations: " + cumulation + " of: " + cumulation_max+ "    Recording time: " + recordingTime + "s"; ;
             spriteBatch.DrawString(spriteFont, drawString, new Vector2(10 + LeftMargin, 0), Color.White, 0, new Vector2(0, 0), 0.3f, SpriteEffects.None, 0);
 
             if (background_recording)
@@ -233,7 +233,22 @@ namespace SDRSharp.Average
                 drawString = "Corrected background!";
                 spriteBatch.DrawString(spriteFont, drawString, new Vector2(10 + LeftMargin, 20), Color.Yellow, 0, new Vector2(0, 0), 0.3f, SpriteEffects.None, 0);
             }
-        }
+
+            if (file_recording)
+            {
+                drawString = "Multiple file saving!";
+
+                drawString += "File # " + FileNumber;
+                spriteBatch.DrawString(spriteFont, drawString, new Vector2(160 + LeftMargin, 20), Color.Red, 0, new Vector2(0, 0), 0.3f, SpriteEffects.None, 0);
+
+
+                if (delay > 0)
+                {
+                    drawString = "  Pause " + delay;
+                    spriteBatch.DrawString(spriteFont, drawString, new Vector2(320 + LeftMargin, 20), Color.Yellow, 0, new Vector2(0, 0), 0.3f, SpriteEffects.None, 0);
+                }
+            }
+              }
 
         private void ScaleY(float Width, float Height)
         {
@@ -265,8 +280,6 @@ namespace SDRSharp.Average
             }
             Line(new Vector2(LeftMargin, TopMargin), new Vector2(LeftMargin, Height_BottomMargin), white);
         }
-
-
 
     }
 }

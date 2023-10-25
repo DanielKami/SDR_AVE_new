@@ -8,10 +8,9 @@
 #endregion
 
 #region Using Statements
+using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.Threading;
-using Microsoft.Xna;
-using Microsoft.Xna.Framework.Graphics;
 using System.Windows.Forms;
 #endregion
 
@@ -80,9 +79,9 @@ namespace SDRSharp.Average
 
             // Create device
             graphicsDevice = new GraphicsDevice(GraphicsAdapter.DefaultAdapter, GraphicsProfile.Reach,
-                //   this.panelViewport.Handle,
-                //  CreateOptions.HardwareVertexProcessing,
-                presentation_parameters);
+               //  this.panelViewport.Handle,
+               //     CreateOptions.HardwareVertexProcessing,
+               presentation_parameters);
 
 
         }
@@ -138,9 +137,9 @@ namespace SDRSharp.Average
 
             ResetingDevice();
 
-            if (presentation_parameters == null) 
+            if (presentation_parameters == null)
                 MessageBox.Show("Presentation parameters is null.", "Important Message");
-            
+
             graphicsDevice.Reset(presentation_parameters);
 
             presentation_parameters.BackBufferWidth = Math.Max(presentation_parameters.BackBufferWidth, width);

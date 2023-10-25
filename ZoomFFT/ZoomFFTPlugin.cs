@@ -31,7 +31,8 @@ namespace SDRSharp.Average
 
         public void Initialize(ISharpControl control)
         {
-            
+            Flags.Load();
+
             try
             {
                 _ifProcessor = new IFProcessor(control);
@@ -48,8 +49,8 @@ namespace SDRSharp.Average
         public void Close()
         {
             _ifProcessor.StopRecording();
- 
-           // Utils.SaveSetting("enableZoomIF", _ifProcessor.Control.Visible);
+            Flags.save();
+            // Utils.SaveSetting("enableZoomIF", _ifProcessor.Control.Visible);
         }        
     }
 }

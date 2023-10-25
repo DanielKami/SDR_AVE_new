@@ -8,23 +8,16 @@ using SDRSharp.Radio;
 using System.IO;
 using System.Text;
 using System.Windows;
+using System.Globalization;
 
 namespace SDRSharp.Average
 {
     public unsafe class IFProcessor : IIQProcessor
     {
         //Window
-        int window_Height=400, window_Width=600;
-        public int Max_BufferSize = 1024 / 4;
-        public float Gain = 70;
-        public float Level = 100;
-        private int average_max = 50000;
-        public int average = 10;
         private int cumulateIndex = 0;
-        public int Intermediate_average = 10;
-        private int Intermediate_cumulateIndex = 0;
-        public bool background_recording=false;
-        public bool background_corrected = false;
+
+
         private UnsafeBuffer _iqBuffer;
         private Complex* _iqPtr;
 
@@ -52,25 +45,32 @@ namespace SDRSharp.Average
         private Thread _fftThread;
         private bool _ThreadRunning;
         private System.Windows.Forms.Timer _Timer;
-        private IFAverageWindow _IFAverageWindow;
+        public IFAverageWindow _IFAverageWindow;
+        System.Diagnostics.Stopwatch watch;
+        System.Diagnostics.Stopwatch watch2;//recording time
 
         public FFT mFFT;
         private float max = 0;
-        //private readonly float _fftOffset = (float) Utils.GetDoubleSetting("fftOffset", -40.0);
         private readonly SharpEvent _Event = new SharpEvent(false);
         private readonly ComplexFifoStream _iqStream = new ComplexFifoStream(BlockMode.BlockingRead);
         private readonly ISharpControl _control;
 
         public bool AverageWindowOn = false;
 
+        //Multiple files save
+        public bool multiple_save = false;
+        private int file_count_number;
+
+        public delegate void MyEventHandler(bool value);
+        public static event MyEventHandler Recording;
+
         public IFProcessor(ISharpControl control)
         {
-
             _control = control;
             _control.PropertyChanged += NotifyPropertyChangedHandler;
             Enabled = true;
             max = 0;
-           
+
             RestartIFWindow();
 
             mFFT = new FFT();
@@ -94,33 +94,25 @@ namespace SDRSharp.Average
 
             if (_IFAverageWindow != null)
             {
-                window_Width = _IFAverageWindow.Width;
-                window_Height = _IFAverageWindow.Height;
-
+                Flags.window_Width = _IFAverageWindow.Width;
+                Flags.window_Height = _IFAverageWindow.Height;
+                
                 _IFAverageWindow.Dispose();
             }
-            try
-            {
-                _IFAverageWindow = new IFAverageWindow();
-            }
-            catch (Exception e)
-            {
-                MessageBox.Show("Problem with opening window" + e.Source, "Important Message");
-            }
-            
-           
+
+            _IFAverageWindow = new IFAverageWindow();
+
             _IFAverageWindow.frequency = _control.CenterFrequency;
             _IFAverageWindow.rate = _control.RFBandwidth;
-            _IFAverageWindow.BufferFrameSize = Max_BufferSize;
+            _IFAverageWindow.BufferFrameSize = Flags.Max_BufferSize;
             _IFAverageWindow.Data = _PostProcPtr;
-            _IFAverageWindow.Gain = Gain;
-            _IFAverageWindow.Level = Level;
+            _IFAverageWindow.Gain = Flags.Gain;
+            _IFAverageWindow.Level = Flags.Level;
 
-            _IFAverageWindow.Width = window_Width;
-            _IFAverageWindow.Height = window_Height;
+            _IFAverageWindow.Width = Flags.window_Width;
+            _IFAverageWindow.Height = Flags.window_Height;
 
             _IFAverageWindow.PanelSizechanged();
-
         }
 
 
@@ -162,12 +154,10 @@ namespace SDRSharp.Average
             {
                 _iqStream.Write(buffer, length);
             }
-
         }
 
         private void NotifyPropertyChangedHandler(object sender, PropertyChangedEventArgs e)
         {
-
             switch (e.PropertyName)
             {
                 case "StartRadio":
@@ -190,8 +180,11 @@ namespace SDRSharp.Average
                 _IFAverageWindow.frequency = _control.CenterFrequency;
                 _IFAverageWindow.rate = _control.RFBandwidth;
                 _IFAverageWindow.Invalidate();
-                _IFAverageWindow.Gain = Gain;
-                _IFAverageWindow.Level = Level;
+                _IFAverageWindow.Gain = Flags.Gain;
+                _IFAverageWindow.Level = Flags.Level;
+                _IFAverageWindow.file_recording = multiple_save;
+                _IFAverageWindow.delayMAX = Flags.Delay;
+                _IFAverageWindow.delay = 0;
                 _IFAverageWindow.Render();
             }
 
@@ -199,27 +192,18 @@ namespace SDRSharp.Average
 
         public void Reset()
         {
-            for (int i = 0; i < Max_BufferSize * average_max; i++)
+            for (int i = 0; i < Flags.Max_BufferSize * Flags.average_max; i++)
             {
                 CumulateBuffer[i] = 0;
             }
             cumulateIndex = 0;
 
-            for (int i = 0; i < Max_BufferSize; i++)
+            for (int i = 0; i < Flags.Max_BufferSize; i++)
                 background_buffer[i] = 1;
-            background_corrected = false;
+            Flags.background_corrected = false;
         }
 
-        public void DataClean()
-        {
-            for (int i = 0; i < Max_BufferSize * average_max; i++)
-            {
-                CumulateBuffer[i] = 0;
-            }
-            cumulateIndex = 0;
 
- 
-        }
         #region Thread
 
         private void Start()
@@ -263,52 +247,69 @@ namespace SDRSharp.Average
         {
             while (_control.IsPlaying && _ThreadRunning)
             {
-
                 #region Read IQ data a correct way
 
                 var total = 0;
 
-                while (_control.IsPlaying && _ThreadRunning && total < Max_BufferSize)
+                while (_control.IsPlaying && _ThreadRunning && total < Flags.Max_BufferSize)
                 {
-                    var len = Max_BufferSize - total;
+                    var len = Flags.Max_BufferSize - total;
                     //Read reads all available data to len. If len is larger than available data then stop and return new total of read data. After reading len is shorter because we have less data to read                   
-                    total += _iqStream.Read(_iqPtr, Max_BufferSize - len, len);
+                    total += _iqStream.Read(_iqPtr, Flags.Max_BufferSize - len, len);
                 }
 
                 #endregion
 
                 #region FFT
                 //copy buffer 
-                for (int i = 0; i < Max_BufferSize; i++)
+                for (int i = 0; i < Flags.Max_BufferSize; i++)
                     FourierBufferIn[i] = _iqPtr[i];
 
-
                 //calculate FFT
-                mFFT.CalcFFT(FourierBufferIn, FourierBufferOut, Max_BufferSize);
+                mFFT.CalcFFT(FourierBufferIn, FourierBufferOut, Flags.Max_BufferSize);
                 #endregion
                 #region Average
                 //Intermediate cumulation FFT buffer
-                Intermediate_cumulateIndex++;
+                Flags.Intermediate_cumulateIndex++;
 
-                for (int i = 0; i < Max_BufferSize; i++)
+                for (int i = 0; i < Flags.Max_BufferSize; i++)
                     IntermediateBuffer[i] += FourierBufferOut[i].Modulus();
+        
 
-
-
-                if (Intermediate_cumulateIndex >= Intermediate_average)
+                if (Flags.Intermediate_cumulateIndex >= Flags.Intermediate_average)
                 {
-                    Intermediate_cumulateIndex = 0;
-
+                    Flags.Intermediate_cumulateIndex = 0;
                     cumulateIndex++;
-                    if (cumulateIndex >= average)
+
+                    if (cumulateIndex >= Flags.Average)
                     {
                         cumulateIndex = 0;
-                        background_recording = false; //if average buffer is completed stop background aquisition
+                        Flags.background_recording = false; //if average buffer is completed stop background aquisition
+                                                        
+                        if (multiple_save == true)
+                        {
+                            if (watch != null && watch.ElapsedMilliseconds / 1000 >= Flags.Delay)
+                            {
+                                HandleMultipleSaving(0);
+                                watch.Stop();                             
+
+                                if (watch2 != null) watch2.Stop();
+                            }
+                            
+
+
+                        if (watch == null || watch.IsRunning == false)
+                                {
+                                    watch = System.Diagnostics.Stopwatch.StartNew();
+                                }
+                        }
+                        else
+                            watch2 = System.Diagnostics.Stopwatch.StartNew();
                     }
 
                     //Order buffer data one half on left other on right                    
                     float temp;
-                    int hb = Max_BufferSize / 2;
+                    int hb = Flags.Max_BufferSize / 2;
                     for (int i = 0; i < hb; i++)
                     {
                         temp = IntermediateBuffer[i];
@@ -322,53 +323,40 @@ namespace SDRSharp.Average
                         int pos;
                         for (int i = 0; i < hb; i++)
                         {
-                            pos = Max_BufferSize - i;
+                            pos = Flags.Max_BufferSize - i;
                             temp = IntermediateBuffer[i];
                             IntermediateBuffer[i] = IntermediateBuffer[pos];
                             IntermediateBuffer[pos] = temp;
                         }
                     }
-                    temp = 1.0f / Intermediate_average;
-                    for (int i = 0; i < Max_BufferSize; i++)
+                    temp = 1.0f / Flags.Intermediate_average;
+                    for (int i = 0; i < Flags.Max_BufferSize; i++)
                     {
                         IntermediateBuffer[i] *= temp;
                     }
-
 
                     if (_control.SquelchEnabled)
                     {
                         max = 0;
                         _IFAverageWindow.ScaleUpdate();
                     }
-                    for (int i = 0; i < Max_BufferSize; i++)
+                    for (int i = 0; i < Flags.Max_BufferSize; i++)
                     {
                         if (IntermediateBuffer[i] > max) max = IntermediateBuffer[i];
                     }
 
                     //Scale to max
-                    int Cm = cumulateIndex * Max_BufferSize;
+                    int Cm = cumulateIndex * Flags.Max_BufferSize;
 
-                    ///Old version
-                    //float scale = 1.0f / max;
-                    //for (int i = 0; i < Max_BufferSize; i++)
-                    //    CumulateBuffer[Cm + i] = (float)Math.Log10(IntermediateBuffer[i] * scale);
-
-                    ////Reset intermediate buffer
-                    //for (int i = 0; i < Max_BufferSize; i++)
-                    //    IntermediateBuffer[i] = 0;
-
-
-                    for (int i = 0; i < Max_BufferSize; i++)
+                    for (int i = 0; i < Flags.Max_BufferSize; i++)
                         CumulateBuffer[Cm + i] = IntermediateBuffer[i];
 
                     //Reset intermediate buffer
-                    for (int i = 0; i < Max_BufferSize; i++)
+                    for (int i = 0; i < Flags.Max_BufferSize; i++)
                         IntermediateBuffer[i] = 0;
-
-
                 }
+     
                 #endregion
-
             }
 
             _iqStream.Flush();
@@ -376,46 +364,60 @@ namespace SDRSharp.Average
 
         private void Timer_Tick(object sender, EventArgs e)
         {
+            if(Flags.background_reset)
+            {
+                for (int i = 0; i < Flags.Max_BufferSize; i++)
+                    background_buffer[i] = 1;
+                Flags.background_reset = false;
+                Flags.background_corrected = false;
+            }
+
             if (_control.IsPlaying)
             {
                 float res;
-                float temp = 1.0f / average;
-                for (int i = 0; i < Max_BufferSize; i++)
+                float temp = 1.0f / Flags.Average;
+                for (int i = 0; i < Flags.Max_BufferSize; i++)
                 {
                     res = 0;
-                    for (int j = 0; j < average; j++)
-                        res += CumulateBuffer[j * Max_BufferSize + i];
+                    for (int j = 0; j < Flags.Average; j++)
+                        res += CumulateBuffer[j * Flags.Max_BufferSize + i];
 
-
-                    if (background_recording == true)
+                    if (Flags.background_recording == true)
                     {
                         background_buffer[i] = res;
-                        _PostProcPtr[i] = Math.Log10(_ExportPtr[i] = res * temp) * Gain - 35 + Level;
-
+                        _PostProcPtr[i] = Math.Log10(_ExportPtr[i] = res * temp) * Flags.Gain - 35 + Flags.Level;
                     }
                     else
                     {
-                        _PostProcPtr[i] = Math.Log10(_ExportPtr[i] = res / background_buffer[i] * temp) * Gain - 35 + Level;
+                        _PostProcPtr[i] = Math.Log10(_ExportPtr[i] = res / background_buffer[i] * temp) * Flags.Gain - 35 + Flags.Level;
                     }
                 }
-
-
-
-
 
                 if (_IFAverageWindow != null && _IFAverageWindow.Visible)
                 {
                     _IFAverageWindow.frequency = _control.CenterFrequency;
                     _IFAverageWindow.rate = _control.RFBandwidth;
-                    _IFAverageWindow.cumulation = cumulateIndex * Intermediate_average;
-                    _IFAverageWindow.cumulation_max = average * Intermediate_average;
+                    _IFAverageWindow.cumulation = cumulateIndex * Flags.Intermediate_average;
+                    _IFAverageWindow.cumulation_max = Flags.Average * Flags.Intermediate_average;
                     _IFAverageWindow.Invalidate();
-                    _IFAverageWindow.Gain = Gain;
-                    _IFAverageWindow.Level = Level;
-                    _IFAverageWindow.background_recording = background_recording;
-                    if (background_recording)
-                        background_corrected = true;
-                    _IFAverageWindow.background_corrected = background_corrected;
+                    _IFAverageWindow.Gain = Flags.Gain;
+                    _IFAverageWindow.Level = Flags.Level;
+                    _IFAverageWindow.file_recording = multiple_save;
+                    _IFAverageWindow.FileNumber = file_count_number+1;
+                    _IFAverageWindow.background_recording = Flags.background_recording;
+                    
+                    _IFAverageWindow.delayMAX = Flags.Delay;
+                    if (watch != null)
+                        _IFAverageWindow.delay = Flags.Delay - watch.ElapsedMilliseconds / 1000;
+                    else
+                        _IFAverageWindow.delay = 0;
+
+                    if (watch2 != null)
+                        _IFAverageWindow.recordingTime = watch2.ElapsedMilliseconds / 1000;
+
+                    if (Flags.background_recording)
+                        Flags.background_corrected = true;
+                    _IFAverageWindow.background_corrected = Flags.background_corrected;
                     _IFAverageWindow.Render();
                 }
             }
@@ -424,41 +426,41 @@ namespace SDRSharp.Average
         private void InitBuffers()
         {
             if (_iqBuffer != null) _iqBuffer.Dispose();
-            _iqBuffer = UnsafeBuffer.Create(Max_BufferSize, sizeof(Complex));
+            _iqBuffer = UnsafeBuffer.Create(Flags.Max_BufferSize, sizeof(Complex));
             _iqPtr = (Complex*)_iqBuffer;
 
             if (CumulateBuffer_ != null) CumulateBuffer_.Dispose();
-            CumulateBuffer_ = UnsafeBuffer.Create(Max_BufferSize * (average_max + 1), sizeof(double));
+            CumulateBuffer_ = UnsafeBuffer.Create(Flags.Max_BufferSize * (Flags.average_max + 1), sizeof(double));
             CumulateBuffer = (float*)CumulateBuffer_;
 
 
             // MessageBox.Show("Dot Net Perls is awesome.");
             if (ExportBuffer != null) ExportBuffer.Dispose();
-            ExportBuffer = UnsafeBuffer.Create(Max_BufferSize, sizeof(double));
+            ExportBuffer = UnsafeBuffer.Create(Flags.Max_BufferSize, sizeof(double));
             _ExportPtr = (double*)ExportBuffer;
 
             if (PostProcBuffer != null) PostProcBuffer.Dispose();
-            PostProcBuffer = UnsafeBuffer.Create(Max_BufferSize, sizeof(double));
+            PostProcBuffer = UnsafeBuffer.Create(Flags.Max_BufferSize, sizeof(double));
             _PostProcPtr = (double*)PostProcBuffer;
 
-            background_buffer = new double[Max_BufferSize];
-            for (int i = 0; i < Max_BufferSize; i++)
+            background_buffer = new double[Flags.Max_BufferSize];
+            for (int i = 0; i < Flags.Max_BufferSize; i++)
                 background_buffer[i] = 1;
 
             if (_FourierBufferIn != null) _FourierBufferIn.Dispose();
-            _FourierBufferIn = UnsafeBuffer.Create(Max_BufferSize, sizeof(Complex));
+            _FourierBufferIn = UnsafeBuffer.Create(Flags.Max_BufferSize, sizeof(Complex));
             FourierBufferIn = (Complex*)_FourierBufferIn;
 
             if (_FourierBufferOut != null) _FourierBufferOut.Dispose();
-            _FourierBufferOut = UnsafeBuffer.Create(Max_BufferSize, sizeof(Complex));
+            _FourierBufferOut = UnsafeBuffer.Create(Flags.Max_BufferSize, sizeof(Complex));
             FourierBufferOut = (Complex*)_FourierBufferOut;
 
             if (_IntermediateBuffer != null) _IntermediateBuffer.Dispose();
-            _IntermediateBuffer = UnsafeBuffer.Create(Max_BufferSize, sizeof(float));
+            _IntermediateBuffer = UnsafeBuffer.Create(Flags.Max_BufferSize, sizeof(float));
             IntermediateBuffer = (float*)_IntermediateBuffer;
 
 
-            mFFT.InitBuffers(Max_BufferSize);
+            mFFT.InitBuffers(Flags.Max_BufferSize);
         }
 
         #endregion
@@ -466,7 +468,8 @@ namespace SDRSharp.Average
         public void UpdateMainBuffer(int BufferSize, bool WindowState)
         {
             Stop();
-            Max_BufferSize = BufferSize;
+            Flags.background_corrected = false;
+            Flags.Max_BufferSize = BufferSize;
             InitBuffers();
             if (WindowState)
             {
@@ -481,30 +484,80 @@ namespace SDRSharp.Average
             if (_IFAverageWindow != null && _IFAverageWindow.Visible)
             {
                 Stop();
-                SaveFileDialog saveFileDialog1 = new SaveFileDialog();
-                saveFileDialog1.Filter = "Text|*.txt";
-                saveFileDialog1.Title = "Export average data";
-                saveFileDialog1.ShowDialog();
 
-                // If the file name is not an empty string open it for saving.
-                if (saveFileDialog1.FileName != "")
+                SaveFileDialog saveFileDialog = new SaveFileDialog
                 {
-                    // create a writer and open the file
-                    TextWriter tw = new StreamWriter(saveFileDialog1.FileName);
-                    string data_out = cumulateIndex * Intermediate_average + "(" + average * Intermediate_average + ")" + "\r\n";
-                    for (int i = 0; i < Max_BufferSize; i++)
+                    Filter = "Text|*.txt",
+                    Title = "Export average data"
+                };
+                saveFileDialog.ShowDialog();
+
+                //If the file name is not an empty string open it for saving.
+                    if (saveFileDialog.FileName != "")
                     {
-                        data_out += (1.0 * (_control.CenterFrequency - _control.RFBandwidth / 2 + 1.0 * i / Max_BufferSize * _control.RFBandwidth) / 1000000).ToString("0.000000000") + "  " + _ExportPtr[i].ToString("0.000000000") + "\r\n";
+                        // create a writer and open the file
+                        TextWriter tw = new StreamWriter(saveFileDialog.FileName);
+                        string data_out = cumulateIndex * Flags.Intermediate_average + "(" + Flags.Average * Flags.Intermediate_average + ")" + "\r\n";
+                        for (int i = 0; i < Flags.Max_BufferSize; i++)
+                        {
+                            data_out += (1.0 * (_control.CenterFrequency - _control.RFBandwidth / 2 + 1.0 * i / Flags.Max_BufferSize * _control.RFBandwidth) / 1000000).ToString("0.000000000") + "  " + _ExportPtr[i].ToString("0.000000000") + "\r\n";
+                        }
+
+                        // write a line of text to the file
+                        tw.WriteLine(data_out);
+
+                        // close the stream
+                        tw.Close();
                     }
-
-                    // write a line of text to the file
-                    tw.WriteLine(data_out);
-
-                    // close the stream
-                    tw.Close();
-                }
+                Thread.Sleep(500);
                 Start();
+
             }
+        }
+
+        public void SaveMultiple()
+        {      
+            file_count_number=0;
+            multiple_save = true;          
+        }
+
+        void HandleMultipleSaving(int value)
+        {
+
+            if (multiple_save == true)
+                if (file_count_number < Flags.MaxFilesToSave)
+                {
+                    if (_IFAverageWindow != null && _IFAverageWindow.Visible)
+                    {
+                        var culture = new CultureInfo("en-US");
+                        DateTime localDate = DateTime.Now;
+
+                        string sometext = Flags.Folder + "\\" + Flags.File + "_" + String.Format("{0:0000}", file_count_number+1) + ".txt";
+                        //MessageBox.Show(sometext);
+
+                        // create a writer and open the file
+                        TextWriter tw = new StreamWriter(sometext);
+                        string data_out = localDate.ToString(culture) + "  Counts:" + Flags.Average * Flags.Intermediate_average + "" + "\r\n";
+                        for (int index = 0; index < Flags.Max_BufferSize; index++)
+                        {
+                            data_out += (1.0 * (_control.CenterFrequency - _control.RFBandwidth / 2 + 1.0 * index / Flags.Max_BufferSize * _control.RFBandwidth) / 1000000).ToString("0.000000000") + "  " + _ExportPtr[index].ToString("0.000000000") + "\r\n";
+                        }
+
+                        //write a line of text to the file
+                        tw.WriteLine(data_out);
+
+                        //close the stream
+                        tw.Close();
+
+                        file_count_number++;
+
+                    }
+                }
+                else
+                {
+                    Recording(true);
+                    multiple_save = false;
+                }
         }
 
         public void StopRecording()

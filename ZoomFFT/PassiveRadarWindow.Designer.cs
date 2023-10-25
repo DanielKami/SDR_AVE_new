@@ -42,7 +42,6 @@ namespace SDRSharp.Average
         {
             this.panelViewport = new System.Windows.Forms.Panel();
             this.SuspendLayout();
-             
             // 
             // panelViewport
             // 
@@ -77,7 +76,7 @@ namespace SDRSharp.Average
 
         }
 
- #endregion
+        #endregion
 
         private System.Windows.Forms.Panel panelViewport;
 
