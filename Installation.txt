@@ -1,12 +1,13 @@
-Installation
+Instalation
 
-This plugin is compatible with the newest SDR# v.1.0.0.1910 and probably newer. This is compiled with NET 4.7.2. Most of the problems with new versions of the SDR# and this plugin are related to the NET version. If it doesn't work try to compile this plugin with newer NET like 4.8.
+This pluggin is compatibile with the newest SDR# v.1.0.0.14.....
 
 Important notes:
-IFave should work under Win 11 without any problems.
+The new version of PassiveRadar plugin is buid in NET 4.7 with MonoGame DirectX. It should works under Win 10 and 11 without any problems.
 
 
-1. Copy the plugin with all DLL files to the plugin directory. 
-2. Copy the plugin file 'ft2.xnb' to the main SDR# directory.
+1. If you installed previous version of this plugin in SDR#  you have to delete following file: Microsoft.Xna.Framework.dll
+2. Copy plugin files
 3. Add the magic sentence to the Plugins.xml file.
+4. Copy file ff2.xnb to main SDR#
 4. Enjoy
